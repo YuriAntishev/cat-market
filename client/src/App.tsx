@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Tabs } from "antd";
 import { AppDispatch } from "./app/store";
@@ -12,8 +12,6 @@ import {
 import MarketMember from "./components/MarketMember";
 import { groupBy, maxProfit } from "./utils/functions";
 import "destyle.css";
-
-import "./App.css";
 
 export interface catMarketPricesItem {
   breed: string;
@@ -29,12 +27,6 @@ interface catMarketPricesGroupedArrayItem {
   salesPrices: number[];
 }
 
-interface catMarketMaxProfitItem {
-  maximumProfit: number;
-  dayOfPurchase: number;
-  dayOfSale: number;
-}
-
 function App() {
   const dispatch = useDispatch<AppDispatch>();
 
@@ -45,54 +37,84 @@ function App() {
     selectCatMatketPrices
   );
 
-  const catMarketPricesGroupedArray =
-    catMarketPrices && groupBy(catMarketPrices, "breed");
+  // Группировка данных (мемоизированная)
+  const groupedData = useMemo(() => {
+    if (!catMarketPrices?.length) return [];
+    return groupBy(catMarketPrices, "breed");
+  }, [catMarketPrices]);
 
-  const resultMessage = catMarketPricesGroupedArray?.map(
-    ({
-      breed,
-      purchasePrices,
-      salesPrices,
-    }: catMarketPricesGroupedArrayItem) => {
-      const { maximumProfit, dayOfPurchase, dayOfSale } = maxProfit(
-        purchasePrices,
-        salesPrices
-      ) as catMarketMaxProfitItem;
+  // Формирование результата (мемоизированное с проверкой на null)
+  const resultMessage = useMemo(() => {
+    if (!groupedData.length) return null;
 
-      return maximumProfit > 0 ? (
-        <div style={{ marginLeft: "20px" }}>
-          <br />
-          Breed: {breed}
-          <br />
-          The highest possible profit for breed - {breed} is {maximumProfit}
-          <br />
-          To get it you need to buy it in {dayOfPurchase} day and sell it in{" "}
-          {dayOfSale} day
-          <br />
-          <div style={{ height: "30px" }} />
-        </div>
-      ) : (
-        <div style={{ marginLeft: "20px" }}>
-          <br />
-          Breed: {breed}
-          <br />
-          There is no way to make a profit
-          <div style={{ height: "20px" }} />
-        </div>
-      );
-    }
-  );
+    return groupedData.map(
+      ({ breed, purchasePrices, salesPrices }: catMarketPricesGroupedArrayItem) => {
+        const profitResult = maxProfit(purchasePrices, salesPrices);
 
-  useEffect(() => {
-    if (catMarketList) {
-      setCurrentMarket(catMarketList[0]);
-    }
-  }, [dispatch, JSON.stringify(catMarketList)]);
+        // Если нет прибыльной сделки
+        if (!profitResult) {
+          return (
+            <div style={{ marginLeft: "20px" }} key={breed}>
+              <br />
+              Breed: {breed}
+              <br />
+              There is no way to make a profit
+              <div style={{ height: "20px" }} />
+            </div>
+          );
+        }
 
+        // Если есть прибыль
+        const { maximumProfit, dayOfPurchase, dayOfSale } = profitResult;
+
+        return (
+          <div style={{ marginLeft: "20px" }} key={breed}>
+            <br />
+            Breed: {breed}
+            <br />
+            The highest possible profit for breed - {breed} is {maximumProfit}
+            <br />
+            To get it you need to buy it in {dayOfPurchase} day and sell it in{" "}
+            {dayOfSale} day
+            <br />
+            <div style={{ height: "30px" }} />
+          </div>
+        );
+      }
+    );
+  }, [groupedData]);
+
+  // Обработчик смены таба
+  const handleTabChange = useCallback((key: string) => {
+    setCurrentMarket(key);
+  }, []);
+
+  // Элементы табов (мемоизированные)
+  const tabItems = useMemo(() => {
+    if (!catMarketList?.length) return [];
+
+    return catMarketList.map((marketName: string, id: number) => ({
+      label: marketName,
+      key: marketName,
+      children: (
+        <MarketMember key={id} catMarketPrices={catMarketPrices} />
+      ),
+    }));
+  }, [catMarketList, catMarketPrices]);
+
+  // Загрузка списка рынков при монтировании
   useEffect(() => {
     dispatch(getCatMatkets());
   }, [dispatch]);
 
+  // Установка текущего рынка при загрузке списка
+  useEffect(() => {
+    if (catMarketList?.length && !currentMarket) {
+      setCurrentMarket(catMarketList[0]);
+    }
+  }, [catMarketList, currentMarket]);
+
+  // Загрузка цен при смене рынка
   useEffect(() => {
     if (currentMarket) {
       dispatch(getCatMatketPrices(currentMarket));
@@ -102,19 +124,9 @@ function App() {
   return (
     <>
       <Tabs
-        onChange={(key) => {
-          setCurrentMarket(key);
-        }}
+        onChange={handleTabChange}
         centered
-        items={catMarketList?.map((i: string, id: number) => {
-          return {
-            label: i,
-            key: i,
-            children: (
-              <MarketMember key={id} catMarketPrices={catMarketPrices} />
-            ),
-          };
-        })}
+        items={tabItems}
       />
       {resultMessage}
     </>

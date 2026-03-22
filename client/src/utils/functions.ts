@@ -1,61 +1,98 @@
 import { catMarketPricesItems, catMarketPricesItem } from "../App";
 
+/**
+ * Группирует элементы по указанному свойству
+ */
 export const groupBy = (arr: catMarketPricesItems[], property: string) => {
-  return Object.entries(
-    arr
-      ?.map((i: catMarketPricesItems) => {
-        return i?.map((item: catMarketPricesItem) => {
-          return item;
-        });
-      })
-      .flat()
-      .reduce((acc: any, cur: any) => {
-        acc[cur[property]] = [...(acc[cur[property]] || []), cur];
-        return acc;
-      }, {})
-  ).map(([key, value]: any) => ({
-    breed: key,
-    purchasePrices: value?.map(({ buy }: { buy: number }) => buy),
-    salesPrices: value?.map(({ sell }: { sell: number }) => sell),
+  if (!arr || !Array.isArray(arr) || arr.length === 0) {
+    return [];
+  }
+
+  const flattened = arr.flatMap((item) => item || []);
+  
+  if (flattened.length === 0) {
+    return [];
+  }
+
+  const grouped = flattened.reduce<Record<string, catMarketPricesItem[]>>(
+    (acc, cur) => {
+      const key = cur[property as keyof catMarketPricesItem] as string;
+      if (!key) return acc;
+      
+      if (!acc[key]) {
+        acc[key] = [];
+      }
+      acc[key].push(cur);
+      return acc;
+    },
+    {}
+  );
+
+  return Object.entries(grouped).map(([breed, items]) => ({
+    breed,
+    purchasePrices: items
+      .map(({ buy }) => buy)
+      .filter((price): price is number => price !== undefined && price !== null),
+    salesPrices: items
+      .map(({ sell }) => sell)
+      .filter((price): price is number => price !== undefined && price !== null),
   }));
 };
 
-const findPairs = (
-  arr1: number[],
-  arr2: number[],
-  n: number,
-  m: number,
-  x: number
-) => {
-  for (let i = 0; i < n; i++)
-    for (let j = 0; j < m; j++)
-      if (
-        arr1[i] - arr2[j] === x &&
-        arr1.indexOf(arr1[i]) > arr2.indexOf(arr2[j])
-      ) {
-          return {
-            maximumProfit: x,
-            dayOfSale: arr1.indexOf(arr1[i]) + 1,
-            dayOfPurchase: arr2.indexOf(arr2[j]) + 1,
-          };
-      }
-};
+/**
+ * Результат поиска максимальной прибыли
+ */
+interface MaxProfitResult {
+  maximumProfit: number;
+  dayOfSale: number;
+  dayOfPurchase: number;
+}
 
-export const maxProfit = (buyArray: number[], sellArray: number[]) => {
-  let maxProfit = 0;
-  let minA = buyArray[0];
-  maxProfit = sellArray[1] - buyArray[0];
-
-  for (let i = 1; i < sellArray.length; i++) {
-    minA = Math.min(buyArray[i - 1], minA);
-    maxProfit = Math.max(sellArray[i] - minA, maxProfit);
+/**
+ * Вычисляет максимальную прибыль при покупке и продаже
+ * @returns объект с максимальной прибылью или null, если прибыль невозможна
+ */
+export const maxProfit = (
+  buyArray: number[],
+  sellArray: number[]
+): MaxProfitResult | null => {
+  // Валидация
+  if (!buyArray?.length || !sellArray?.length) {
+    return null;
   }
 
-  return findPairs(
-    sellArray,
-    buyArray,
-    sellArray.length,
-    buyArray.length,
-    maxProfit
-  );
+  const n = Math.min(buyArray.length, sellArray.length);
+  
+  if (n < 2) {
+    return null;
+  }
+
+  let maxProfitValue = 0;
+  let minBuyPrice = buyArray[0];
+  let minBuyIndex = 0;
+  let maxProfitDayOfSale = 0;
+
+  for (let i = 1; i < n; i++) {
+    const currentProfit = sellArray[i] - minBuyPrice;
+    
+    if (currentProfit > maxProfitValue) {
+      maxProfitValue = currentProfit;
+      maxProfitDayOfSale = i;
+    }
+    
+    if (buyArray[i - 1] < minBuyPrice) {
+      minBuyPrice = buyArray[i - 1];
+      minBuyIndex = i - 1;
+    }
+  }
+
+  if (maxProfitValue <= 0) {
+    return null;
+  }
+
+  return {
+    maximumProfit: maxProfitValue,
+    dayOfSale: maxProfitDayOfSale + 1,
+    dayOfPurchase: minBuyIndex + 1,
+  };
 };
